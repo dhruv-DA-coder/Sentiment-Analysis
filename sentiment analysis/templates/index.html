@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentiment Analyzer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/d3-cloud/1.2.5/d3.layout.cloud.min.js"></script>
+</head>
+<body>
+    <div class="theme-toggle" onclick="toggleTheme()">
+        🌓
+    </div>
+    
+    <div class="container">
+        <div class="card">
+            <h1>Sentiment Analyzer</h1>
+            
+            <form id="analyze-form">
+                <textarea 
+                    id="input-text" 
+                    placeholder="Enter text to analyze (max 5000 characters)..."
+                    maxlength="5000"
+                    required
+                ></textarea>
+                
+                <div class="char-count">
+                    <span id="char-count">0</span>/5000
+                </div>
+                
+                <button type="submit" class="btn btn-primary">Analyze</button>
+                <button type="button" class="btn" id="clear-btn">Clear</button>
+            </form>
+        </div>
+
+        <div class="loading">
+            <div class="spinner"></div>
+            <p>Analyzing text...</p>
+        </div>
+
+        <div class="card" id="results" style="display: none;">
+            <h2>Analysis Results</h2>
+            <div id="sentiment-score"></div>
+            <div id="word-cloud" class="word-cloud"></div>
+            <button class="btn" id="copy-btn">Copy Results</button>
+        </div>
+    </div>
+
+    <script>
+        // Theme toggling
+        function toggleTheme() {
+            document.body.dataset.theme = 
+                document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+            localStorage.setItem('theme', document.body.dataset.theme);
+        }
+
+        // Load saved theme
+        document.body.dataset.theme = localStorage.getItem('theme') || 'light';
+
+        // Word cloud visualization
+        function renderWordCloud(words) {
+            const width = document.getElementById('word-cloud').offsetWidth;
+            const height = 300;
+
+            const layout = d3.layout.cloud()
+                .size([width, height])
+                .words(Object.entries(words).map(([text, value]) => ({
+                    text,
+                    size: 10 + value * 30
+                })))
+                .padding(5)
+                .rotate(() => 0)
+                .font('Inter')
+                .fontSize(d => d.size)
+                .on('end', draw);
+
+            layout.start();
+
+            function draw(words) {
+                d3.select('#word-cloud').html('');
+                d3.select('#word-cloud')
+                    .append('svg')
+                    .attr('width', width)
+                    .attr('height', height)
+                    .append('g')
+                    .attr('transform', `translate(${width/2},${height/2})`)
+                    .selectAll('text')
+                    .data(words)
+                    .enter()
+                    .append('text')
+                    .style('font-size', d => `${d.size}px`)
+                    .style('font-family', 'Inter')
+                    .style('fill', () => d3.interpolateBlues(Math.random()))
+                    .attr('text-anchor', 'middle')
+                    .attr('transform', d => `translate(${d.x},${d.y})rotate(${d.rotate})`)
+                    .text(d => d.text);
+            }
+        }
+
+        // Form handling
+        document.getElementById('analyze-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const text = document.getElementById('input-text').value;
+            
+            document.querySelector('.loading').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({text})
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('sentiment-score').textContent = 
+                        `Sentiment: ${data.sentiment} (${data.score})`;
+                    renderWordCloud(data.word_frequencies);
+                    document.getElementById('results').style.display = 'block';
+                } else {
+                    alert(data.error);
+                }
+            } catch (error) {
+                alert('Analysis failed. Please try again.');
+            } finally {
+                document.querySelector('.loading').style.display = 'none';
+            }
+        });
+
+        // Character counter
+        document.getElementById('input-text').addEventListener('input', function() {
+            document.getElementById('char-count').textContent = this.value.length;
+        });
+
+        // Clear form
+        document.getElementById('clear-btn').addEventListener('click', () => {
+            document.getElementById('input-text').value = '';
+            document.getElementById('char-count').textContent = '0';
+            document.getElementById('results').style.display = 'none';
+        });
+
+        // Copy results
+        document.getElementById('copy-btn').addEventListener('click', function() {
+            const text = document.getElementById('sentiment-score').textContent;
+            navigator.clipboard.writeText(text)
+                .then(() => {
+                    this.textContent = 'Copied!';
+                    setTimeout(() => this.textContent = 'Copy Results', 2000);
+                });
+        });
+    </script>
+</body>
+</html>
